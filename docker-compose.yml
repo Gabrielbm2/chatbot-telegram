@@ -1,0 +1,31 @@
+services:
+  mongo:
+    image: mongo:latest
+    container_name: chatbot-telegram-mongo-1
+    networks:
+      - botnet
+    ports:
+      - "27016:27017"
+    volumes:
+      - mongo-data:/data/db
+
+  bot:
+    build:
+      context: .
+    container_name: chatbot-telegram-bot-1
+    restart: always
+    networks:
+      - botnet
+    environment:
+      MONGO_URI: "mongodb://mongo:27017/bot_database"
+    depends_on:
+      - mongo
+    volumes:
+      - .:/app
+    command: python handlers.py
+
+networks:
+  botnet:
+
+volumes:
+  mongo-data:
