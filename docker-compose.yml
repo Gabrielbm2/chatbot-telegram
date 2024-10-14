@@ -13,7 +13,6 @@ services:
     build:
       context: .
     container_name: chatbot-telegram-bot-1
-    restart: always
     networks:
       - botnet
     environment:
