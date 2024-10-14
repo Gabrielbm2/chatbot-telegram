@@ -22,7 +22,7 @@ services:
       - mongo
     volumes:
       - .:/app
-    command: python handlers.py
+    command: python app.py
 
 networks:
   botnet:
