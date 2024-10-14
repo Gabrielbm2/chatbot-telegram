@@ -383,7 +383,7 @@ def main() -> None:
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     application.add_handler(CallbackQueryHandler(button))
 
-    webhook_url = "https://670c91966e56492c58af9d27--chatbot-telegram-deeper-systems.netlify.app/webhook"
+    webhook_url = "https://gabriel-bernardo-portfolio.netlify.app/"
     application.run_webhook(
         listen="0.0.0.0",
         port=int(os.getenv("PORT", 8443)),
