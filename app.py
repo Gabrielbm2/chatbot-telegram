@@ -1,17 +1,14 @@
-import os
 import time
-import logging
+import os
+import sys
 from collections import defaultdict
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, MessageHandler, filters, ContextTypes
 from database import get_user, update_user, create_user_if_not_exists, add_transaction, get_transactions
 
-logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
-logger = logging.getLogger(__name__)
-
 start_time = time.time()
 
-TELEGRAM_TOKEN = '7997468263:AAEbyi_YttRUKAOWemjaBXA1nQ-APkADvz0'
+TELEGRAM_TOKEN = os.getenv('TELEGRAM_TOKEN')
 if not TELEGRAM_TOKEN:
     raise ValueError(
         "Telegram token not found. Please ensure the TELEGRAM_TOKEN environment variable is correctly set."
@@ -68,11 +65,8 @@ def calculate_detailed_balance(user_id):
         crypto_balances = defaultdict(float)
 
         for transaction in transactions:
-            logger.debug(f"Processing transaction: {transaction}")
 
-            # Verifica se transação contém as chaves necessárias
             if not all(k in transaction for k in ["transaction_type", "amount", "method"]):
-                logger.error(f"Transaction data incomplete: {transaction}")
                 continue
 
             transaction_type = transaction["transaction_type"]
@@ -93,19 +87,13 @@ def calculate_detailed_balance(user_id):
 
         total_balance = fiat_balance + sum(crypto_balances.values())
 
-        logger.debug(f"Calculated fiat balance: {fiat_balance}")
-        logger.debug(f"Calculated crypto balances: {crypto_balances}")
-        logger.debug(f"Calculated total balance: {total_balance}")
-
         return {
             "fiat_balance": fiat_balance,
             "crypto_balances": dict(crypto_balances),
             "total_balance": total_balance
         }
     except Exception as e:
-        logger.error(f"Error calculating balance for user {user_id}: {str(e)}")
         raise e
-
 
 async def show_user_balance(update_or_query, context, user_id):
     try:
@@ -124,60 +112,21 @@ async def show_user_balance(update_or_query, context, user_id):
             await update_or_query.message.reply_text(
                 text=balance_message,
                 reply_markup=InlineKeyboardMarkup(
-                    build_menu(
-                        [InlineKeyboardButton("Back to Main Menu", callback_data='back_to_menu')],
-                        1
-                    )
+                    build_menu([InlineKeyboardButton("Back to Main Menu", callback_data='back_to_menu')], 1)
                 )
             )
         else:
             await update_or_query.edit_message_text(
                 text=balance_message,
                 reply_markup=InlineKeyboardMarkup(
-                    build_menu(
-                        [InlineKeyboardButton("Back to Main Menu", callback_data='back_to_menu')],
-                        1
-                    )
+                    build_menu([InlineKeyboardButton("Back to Main Menu", callback_data='back_to_menu')], 1)
                 )
             )
     except Exception as e:
-        logger.error(f"Error showing balance for user {user_id}: {str(e)}")
         if isinstance(update_or_query, Update):
             await update_or_query.message.reply_text("An error occurred. Please try again later.")
         else:
             await update_or_query.edit_message_text("An error occurred. Please try again later.")
-
-
-async def show_user_balance(update_or_query, context, user_id):
-    try:
-        balance_details = calculate_detailed_balance(user_id)
-        fiat_balance = balance_details["fiat_balance"]
-        crypto_balances = balance_details["crypto_balances"]
-
-        balance_message = f"Fiat Balance (Bank & PayPal): ${fiat_balance:.2f}\n\nCrypto Balances:\n"
-        for crypto_type, amount in crypto_balances.items():
-            balance_message += f"- {crypto_type}: {amount:.2f}\n"
-
-        balance_message += f"\nTotal Balance: ${balance_details['total_balance']:.2f}"
-
-        if isinstance(update_or_query, Update):
-            await update_or_query.message.reply_text(
-                text=balance_message,
-                reply_markup=InlineKeyboardMarkup(
-                    build_menu([InlineKeyboardButton("Back to Main Menu", callback_data='back_to_menu')], 1)
-                )
-            )
-        else:
-            await update_or_query.edit_message_text(
-                text=balance_message,
-                reply_markup=InlineKeyboardMarkup(
-                    build_menu([InlineKeyboardButton("Back to Main Menu", callback_data='back_to_menu')], 1)
-                )
-            )
-    except Exception as e:
-        logger.error(f"Error showing balance for user {user_id}: {str(e)}")
-        await update_or_query.message.reply_text("An error occurred. Please try again later.")
-
 
 async def show_payment_methods(update_or_query, context, user_id):
     user = get_user(user_id)
@@ -206,6 +155,81 @@ def validate_transaction_data(state):
         return False
     return True
 
+async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    user_id = update.message.from_user.id
+    user = get_user(user_id)
+    state = user.get("state", {})
+
+    if not state:
+        state = {}
+
+    user_input = update.message.text
+
+    try:
+        if state.get("flow") == "deposit" and state.get("step") == 1:
+            if not user_input.isdigit() or int(user_input) <= 0:
+                await update.message.reply_text("Enter a valid positive integer for deposit amount.")
+                return
+
+            amount = int(user_input)
+            # Save state immediately
+            state["amount"] = amount
+            state["step"] = 2
+            update_user(user_id, {"state": state})
+            await show_payment_methods(update, context, user_id)
+
+        elif state.get("flow") == "deposit" and state.get("step") == 4:
+            method_type = state.get("selected_method_type")
+            crypto_type = state.get("selected_crypto_type", "").upper()
+            amount = state.get("amount")
+
+            if method_type == 'crypto' and crypto_type:
+                add_unique_method(user_id, {
+                    "type": "crypto",
+                    "crypto_type": crypto_type,
+                    "details": user_input
+                })
+                state["step"] = 2
+                update_user(user_id, {"state": state})
+                await show_payment_methods(update, context, user_id)
+
+        elif state.get("flow") == "deposit" and state.get("step") == 3:
+            method_type = state.get("selected_method_type")
+
+            if method_type == 'bank_transfer':
+                add_unique_method(user_id, {"type": "bank_transfer", "details": user_input})
+                state["selected_method_details"] = user_input
+                state["step"] = 4
+                update_user(user_id, {"state": state})
+                await show_payment_methods(update, context, user_id)
+
+            elif method_type == 'paypal':
+                add_unique_method(user_id, {"type": "paypal", "details": user_input})
+                state["selected_method_details"] = user_input
+                state["step"] = 4
+                update_user(user_id, {"state": state})
+                await show_payment_methods(update, context, user_id)
+
+        elif state.get("flow") == "withdraw" and state.get("step") == 1:
+            if not user_input.isdigit() or int(user_input) <= 0:
+                await update.message.reply_text("Enter a valid positive integer for withdrawal amount.")
+                return
+
+            amount = int(user_input)
+
+            total_balance = calculate_detailed_balance(user_id)["total_balance"]
+            if amount > total_balance:
+                await update.message.reply_text(
+                    "Withdrawal amount exceeds your total balance. Enter a valid amount."
+                )
+                return
+
+            state["amount"] = amount
+            state["step"] = 2
+            update_user(user_id, {"state": state})
+            await show_payment_methods(update, context, user_id)
+    except Exception as e:
+        await update.message.reply_text("An error occurred. Please try again later.")
 
 async def button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     query = update.callback_query
@@ -221,15 +245,20 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         if query.data == 'check_balance':
             await show_user_balance(query, context, user_id)
         elif query.data == 'deposit':
-            update_user(user_id, {"state": {"flow": "deposit", "step": 1}})
+            state["flow"] = "deposit"
+            state["step"] = 1
+            update_user(user_id, {"state": state})
             await query.edit_message_text("Enter the amount to deposit:")
         elif query.data == 'withdraw':
-            update_user(user_id, {"state": {"flow": "withdraw", "step": 1}})
+            state["flow"] = "withdraw"
+            state["step"] = 1
+            update_user(user_id, {"state": state})
             await query.edit_message_text("Enter the amount to withdraw:")
         elif query.data == 'back_to_menu':
             await show_main_menu(query, context)
         elif query.data == 'add_payment_method':
-            update_user(user_id, {"state.step": 2})
+            state["step"] = 2
+            update_user(user_id, {"state": state})
             await query.edit_message_text(
                 text="Choose a method type:",
                 reply_markup=InlineKeyboardMarkup(
@@ -242,13 +271,19 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
                 )
             )
         elif query.data == 'bank_transfer':
-            update_user(user_id, {"state.selected_method_type": query.data, "state.step": 3})
+            state["selected_method_type"] = query.data
+            state["step"] = 3
+            update_user(user_id, {"state": state})
             await query.edit_message_text("Enter the name of the bank:")
         elif query.data == 'paypal':
-            update_user(user_id, {"state.selected_method_type": query.data, "state.step": 3})
+            state["selected_method_type"] = query.data
+            state["step"] = 3
+            update_user(user_id, {"state": state})
             await query.edit_message_text("Enter your Paypal e-mail address:")
         elif query.data == 'crypto':
-            update_user(user_id, {"state.selected_method_type": query.data, "state.step": 3})
+            state["selected_method_type"] = query.data
+            state["step"] = 3
+            update_user(user_id, {"state": state})
             await query.edit_message_text(
                 text="Choose a Crypto type:",
                 reply_markup=InlineKeyboardMarkup(
@@ -261,9 +296,12 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
                 )
             )
         elif query.data in ['btc', 'eth', 'usdt']:
-            update_user(user_id, {"state.selected_crypto_type": query.data, "state.step": 4})
+            state["selected_crypto_type"] = query.data
+            state["step"] = 4
+            update_user(user_id, {"state": state})
             await query.edit_message_text(text=f"Enter your {query.data.upper()} address:")
         elif query.data == 'cancel':
+            update_user(user_id, {"$unset": {"state": ""}})
             await query.edit_message_text("Operation cancelled. Thank you for using Mock Bank. Goodbye!")
             return
         elif query.data == 'confirm_yes':
@@ -274,7 +312,7 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             flow = state.get("flow")
             amount = state.get("amount")
             method_type = state.get("selected_method_type")
-            method_details = state.get("selected_method_details", "")
+            state.get("selected_method_details", "")
 
             try:
                 meio = method_type
@@ -320,12 +358,14 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             import re
             match = re.match(r'use_method_(\w+)_(\d+)', query.data)
             if match:
-                method_type = match.group(1)
+                match.group(1)
                 method_index = int(match.group(2))
                 selected_method = user['deposit_methods'][method_index]
                 if selected_method:
-                    update_user(user_id, {"state.selected_method_type": selected_method['type'],
-                                          "state.selected_method_details": selected_method['details'], "state.step": 4})
+                    state["selected_method_type"] = selected_method['type']
+                    state["selected_method_details"] = selected_method['details']
+                    state["step"] = 4
+                    update_user(user_id, {"state": state})
                     await query.edit_message_text(
                         text=f"Confirm {state.get('flow')} of {state.get('amount')} using {selected_method['type']} ({selected_method['details']})?",
                         reply_markup=InlineKeyboardMarkup(
@@ -338,87 +378,22 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
                 else:
                     await query.edit_message_text("An error occurred. Selected method not found.")
     except Exception as e:
-        logger.error(f"Error processing callback data {query.data} for user {user_id}: {str(e)}")
         await query.edit_message_text("An error occurred. Please try again later.")
 
-
-async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    user_id = update.message.from_user.id
-    user = get_user(user_id)
-    state = user.get("state", {})
-
-    if not state:
-        state = {}
-
-    user_input = update.message.text
-
-    try:
-        if state.get("flow") == "deposit" and state.get("step") == 1:
-            if not user_input.isdigit() or int(user_input) <= 0:
-                await update.message.reply_text("Enter a valid positive integer for deposit amount.")
-                return
-
-            amount = int(user_input)
-            update_user(user_id, {"state.amount": amount, "state.step": 2})
-            await show_payment_methods(update, context, user_id)
-
-        elif state.get("flow") == "deposit" and state.get("step") == 4:
-            method_type = state.get("selected_method_type")
-            crypto_type = state.get("selected_crypto_type", "").upper()
-            amount = state.get("amount")
-
-            if method_type == 'crypto' and crypto_type:
-                add_unique_method(user_id, {
-                    "type": "crypto",
-                    "crypto_type": crypto_type,
-                    "details": user_input
-                })
-                update_user(user_id, {"state": {"flow": "deposit", "step": 2}})
-                await show_payment_methods(update, context, user_id)
-
-        elif state.get("flow") == "deposit" and state.get("step") == 3:
-            method_type = state.get("selected_method_type")
-
-            if method_type == 'bank_transfer':
-                add_unique_method(user_id, {"type": "bank_transfer", "details": user_input})
-                update_user(user_id, {"state.selected_method_details": user_input, "state.step": 4})
-                await show_payment_methods(update, context, user_id)
-
-            elif method_type == 'paypal':
-                add_unique_method(user_id, {"type": "paypal", "details": user_input})
-                update_user(user_id, {"state.selected_method_details": user_input, "state.step": 4})
-                await show_payment_methods(update, context, user_id)
-
-        elif state.get("flow") == "withdraw" and state.get("step") == 1:
-            if not user_input.isdigit() or int(user_input) <= 0:
-                await update.message.reply_text("Enter a valid positive integer for withdrawal amount.")
-                return
-
-            amount = int(user_input)
-
-            total_balance = calculate_detailed_balance(user_id)["total_balance"]
-            if amount > total_balance:
-                await update.message.reply_text(
-                    "Withdrawal amount exceeds your total balance. Enter a valid amount."
-                )
-                return
-
-            update_user(user_id, {"state.amount": amount, "state.step": 2})
-            await show_payment_methods(update, context, user_id)
-    except Exception as e:
-        logger.error(f"Error handling message '{user_input}' for user {user_id}: {str(e)}")
-        await update.message.reply_text("An error occurred. Please try again later.")
-
+async def debug_restart(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text("Restarting...")
+    os.execv(sys.executable, ['python'] + sys.argv)
+    sys.exit(0)
 
 def main() -> None:
     application = Application.builder().token(TELEGRAM_TOKEN).build()
     application.add_handler(CommandHandler("start", start))
-    application.add_handler(CommandHandler("uptime", debug_uptime))
+    application.add_handler(CommandHandler("debug_uptime", debug_uptime))
+    application.add_handler(CommandHandler("debug_restart", debug_restart))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     application.add_handler(CallbackQueryHandler(button))
 
     application.run_polling()
-
 
 if __name__ == '__main__':
     main()

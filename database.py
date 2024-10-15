@@ -1,7 +1,7 @@
 from pymongo import MongoClient, errors
 import os
 
-MONGO_URI = os.getenv("MONGO_URI", "mongodb://localhost:27016/bot_database")
+MONGO_URI = os.getenv("MONGO_URI", "mongodb://mongo:mongo@mongo:27017/bot_database")
 client = MongoClient(MONGO_URI)
 db = client['bot_database']
 users_collection = db['users']
