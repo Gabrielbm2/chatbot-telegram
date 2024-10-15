@@ -33,7 +33,7 @@ async def show_main_menu(update_or_query, context):
     ]
     reply_markup = InlineKeyboardMarkup(build_menu(keyboard, 1))
     if isinstance(update_or_query, Update):
-        await update_or_query.message.reply_text('Welcome to Mock Bank! Choose an option:', reply_markup=reply_markup)
+        await update_or_query.message.reply_text('Welcome to Deeper Systems! Choose an option:', reply_markup=reply_markup)
     else:
         await update_or_query.edit_message_text('Choose an option:', reply_markup=reply_markup)
 
@@ -302,7 +302,7 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             await query.edit_message_text(text=f"Enter your {query.data.upper()} address:")
         elif query.data == 'cancel':
             update_user(user_id, {"$unset": {"state": ""}})
-            await query.edit_message_text("Operation cancelled. Thank you for using Mock Bank. Goodbye!")
+            await query.edit_message_text("Operation cancelled. Thank you for using Deeper Systems. Goodbye!")
             return
         elif query.data == 'confirm_yes':
             if not validate_transaction_data(state):
@@ -322,7 +322,7 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
                 if flow == "deposit":
                     add_transaction(user_id, "deposit", meio, currency, valor)
                     await query.edit_message_text(
-                        f"Deposited {amount} using {method_type}. Thank you for using Mock Bank. Goodbye!")
+                        f"Deposited {amount} using {method_type}. Thank you for using Deeper Systems. Goodbye!")
                 elif flow == "withdraw":
                     if method_type in ['bank_transfer', 'paypal']:
                         fiat_balance = calculate_detailed_balance(user_id)['fiat_balance']
@@ -342,7 +342,7 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
                     add_transaction(user_id, "withdraw", meio, currency, valor)
                     await query.edit_message_text(
-                        f"Withdrawn {amount} using {method_type}. Thank you for using Mock Bank. Goodbye!")
+                        f"Withdrawn {amount} using {method_type}. Thank you for using Deeper Systems. Goodbye!")
 
                 update_user(user_id, {"$unset": {"state": ""}})
             except Exception as e:
@@ -352,7 +352,7 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
         elif query.data == 'confirm_no':
             update_user(user_id, {"$unset": {"state": ""}})
-            await query.edit_message_text("Operation cancelled. Thank you for using Mock Bank. Goodbye!")
+            await query.edit_message_text("Operation cancelled. Thank you for using Deeper Systems. Goodbye!")
             return
         else:
             import re
