@@ -41,7 +41,7 @@ Ensure that you have properly set the following environment variables:
 
 ### Project Structure
 
-- `bot.py`: Main bot code, including user interaction logic and integration with Telegram.
+- `app.py`: Main bot code, including user interaction logic and integration with Telegram.
 - `database.py`: Contains functions to interact with MongoDB.
 - `Dockerfile`: Instructions for creating the Docker image.
 - `docker-compose.yml`: Docker Compose configuration for orchestrating services.
