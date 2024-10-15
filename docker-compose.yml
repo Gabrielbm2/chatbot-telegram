@@ -8,9 +8,6 @@ services:
       - "27016:27017"
     volumes:
       - mongo-data:/data/db
-    environment:
-      - MONGO_INITDB_ROOT_USERNAME=mongo
-      - MONGO_INITDB_ROOT_PASSWORD=mongo
 
   bot:
     build:
@@ -19,7 +16,7 @@ services:
     networks:
       - botnet
     environment:
-      - MONGO_URI=mongodb://mongo:mongo@mongo:27017/bot_database
+      - MONGO_URI=mongodb://mongo:27017/bot_database
       - TELEGRAM_TOKEN=${TELEGRAM_TOKEN}
     depends_on:
       - mongo

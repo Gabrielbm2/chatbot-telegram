@@ -33,10 +33,10 @@ async def show_main_menu(update_or_query, context):
     ]
     reply_markup = InlineKeyboardMarkup(build_menu(keyboard, 1))
     if isinstance(update_or_query, Update):
-        await update_or_query.message.reply_text('Welcome to Deeper Systems! Choose an option:', reply_markup=reply_markup)
+        await update_or_query.message.reply_text('Welcome to Deeper Systems! Choose an option:',
+                                                 reply_markup=reply_markup)
     else:
         await update_or_query.edit_message_text('Choose an option:', reply_markup=reply_markup)
-
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     user_id = update.effective_user.id
@@ -65,7 +65,6 @@ def calculate_detailed_balance(user_id):
         crypto_balances = defaultdict(float)
 
         for transaction in transactions:
-
             if not all(k in transaction for k in ["transaction_type", "amount", "method"]):
                 continue
 
@@ -95,6 +94,7 @@ def calculate_detailed_balance(user_id):
     except Exception as e:
         raise e
 
+
 async def show_user_balance(update_or_query, context, user_id):
     try:
         balance_details = calculate_detailed_balance(user_id)
@@ -123,10 +123,12 @@ async def show_user_balance(update_or_query, context, user_id):
                 )
             )
     except Exception as e:
+        print(f"Error in show_user_balance: {e}")
         if isinstance(update_or_query, Update):
             await update_or_query.message.reply_text("An error occurred. Please try again later.")
         else:
             await update_or_query.edit_message_text("An error occurred. Please try again later.")
+
 
 async def show_payment_methods(update_or_query, context, user_id):
     user = get_user(user_id)
@@ -146,6 +148,7 @@ async def show_payment_methods(update_or_query, context, user_id):
     else:
         await update_or_query.edit_message_text("Select a payment method:", reply_markup=reply_markup)
 
+
 def validate_transaction_data(state):
     flow = state.get("flow")
     amount = state.get("amount")
@@ -154,6 +157,7 @@ def validate_transaction_data(state):
     if not flow or amount is None or not method:
         return False
     return True
+
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     user_id = update.message.from_user.id
@@ -172,7 +176,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
                 return
 
             amount = int(user_input)
-            # Save state immediately
             state["amount"] = amount
             state["step"] = 2
             update_user(user_id, {"state": state})
@@ -230,6 +233,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             await show_payment_methods(update, context, user_id)
     except Exception as e:
         await update.message.reply_text("An error occurred. Please try again later.")
+
 
 async def button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     query = update.callback_query
@@ -312,7 +316,7 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             flow = state.get("flow")
             amount = state.get("amount")
             method_type = state.get("selected_method_type")
-            state.get("selected_method_details", "")
+            selected_method_details = state.get("selected_method_details", "")
 
             try:
                 meio = method_type
@@ -324,6 +328,13 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
                     await query.edit_message_text(
                         f"Deposited {amount} using {method_type}. Thank you for using Deeper Systems. Goodbye!")
                 elif flow == "withdraw":
+                    total_balance = calculate_detailed_balance(user_id)["total_balance"]
+                    if valor > total_balance:
+                        await query.edit_message_text(
+                            f"Withdraw amount exceeds your total balance. Enter a valid amount."
+                        )
+                        return
+
                     if method_type in ['bank_transfer', 'paypal']:
                         fiat_balance = calculate_detailed_balance(user_id)['fiat_balance']
                         if valor > fiat_balance:
@@ -334,7 +345,8 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
                     elif method_type == 'crypto':
                         crypto_type = state.get("selected_crypto_type", "").upper()
-                        if valor > calculate_detailed_balance(user_id)['crypto_balances'].get(crypto_type, 0):
+                        crypto_balance = calculate_detailed_balance(user_id)['crypto_balances'].get(crypto_type, 0)
+                        if valor > crypto_balance:
                             await query.edit_message_text(
                                 f"Insufficient {crypto_type} balance. Withdrawal denied."
                             )
@@ -358,7 +370,7 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             import re
             match = re.match(r'use_method_(\w+)_(\d+)', query.data)
             if match:
-                match.group(1)
+                method_type = match.group(1)
                 method_index = int(match.group(2))
                 selected_method = user['deposit_methods'][method_index]
                 if selected_method:
@@ -367,23 +379,24 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
                     state["step"] = 4
                     update_user(user_id, {"state": state})
                     await query.edit_message_text(
-                        text=f"Confirm {state.get('flow')} of {state.get('amount')} using {selected_method['type']} ({selected_method['details']})?",
-                        reply_markup=InlineKeyboardMarkup(
-                            build_menu([
-                                InlineKeyboardButton("Yes", callback_data='confirm_yes'),
-                                InlineKeyboardButton("No", callback_data='confirm_no')
-                            ], 2)
-                        )
+                        text=f"Confirm {state['flow']} of {state['amount']} using {selected_method['type']} "
+                             f"({selected_method['details']})?\n\nPress 'Yes' to confirm or 'No' to cancel.",
+                        reply_markup=InlineKeyboardMarkup(build_menu([
+                            InlineKeyboardButton("Yes", callback_data='confirm_yes'),
+                            InlineKeyboardButton("No", callback_data='confirm_no')
+                        ], 2))
                     )
-                else:
-                    await query.edit_message_text("An error occurred. Selected method not found.")
+            else:
+                await query.edit_message_text("Invalid selection. Please try again.")
     except Exception as e:
-        await query.edit_message_text("An error occurred. Please try again later.")
+        await query.edit_message_text(f"An error occurred: {e}")
+
 
 async def debug_restart(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("Restarting...")
     os.execv(sys.executable, ['python'] + sys.argv)
     sys.exit(0)
+
 
 def main() -> None:
     application = Application.builder().token(TELEGRAM_TOKEN).build()
@@ -394,6 +407,7 @@ def main() -> None:
     application.add_handler(CallbackQueryHandler(button))
 
     application.run_polling()
+
 
 if __name__ == '__main__':
     main()
