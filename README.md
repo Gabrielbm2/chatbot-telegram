@@ -37,7 +37,6 @@ To set up and run the project locally, follow the steps below:
 Ensure that you have properly set the following environment variables:
 
 - `TELEGRAM_TOKEN`: The API token of your Telegram Bot.
-- The token is already pre-filled to facilitate the use of the Chatbot.
 
 ### Project Structure
 
@@ -59,3 +58,7 @@ After starting Docker, the bot will be running and ready to interact on Telegram
 
 # Command to run the application
 CMD ["python", "bot.py"]
+
+## Presentation video for using the chatbot
+
+https://github.com/user-attachments/assets/4938dc1f-097a-4658-abd3-a81eb6c704da
