@@ -37,7 +37,6 @@ To set up and run the project locally, follow the steps below:
 Ensure that you have properly set the following environment variables:
 
 - `TELEGRAM_TOKEN`: The API token of your Telegram Bot.
-- The token is already pre-filled to facilitate the use of the Chatbot.
 
 ### Project Structure
 
